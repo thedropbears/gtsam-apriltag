@@ -1,0 +1,4 @@
+---
+
+classes:
+  gtsam_apriltag::Estimator:

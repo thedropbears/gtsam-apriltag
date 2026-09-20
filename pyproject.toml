@@ -1,0 +1,82 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = [
+    "hatchling",
+    "hatch-vcs",
+    "semiwrap~=0.7.0",
+    "hatch-meson~=0.1.2",
+    "hatch-robotpy~=0.2.1",
+    "hatch-nativelib~=0.2.2",
+    "wpilib==2027.0.0a7",
+]
+
+
+[project]
+name = "gtsam-apriltag"
+dynamic = ["version"]
+description = "GTSAM based AprilTag localisation for RobotPy"
+license = "BSD-3-Clause"
+dependencies = [
+    "wpilib==2027.0.0a7",
+]
+
+[[project.authors]]
+name = "FRC Team 4774 and 1880"
+email = "enquiries@thedropbears.org.au"
+
+[project.urls]
+"Source code" = "https://github.com/thedropbears/gtsam-apriltag"
+
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "gtsam_apriltag/version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["gtsam_apriltag"]
+
+[[tool.hatch.build.hooks.robotpy.maven_lib_download]]
+artifact_id = "gtsam-cpp"
+group_id = "release.org.wpilib.thirdparty.gtsam"
+repo_url = "https://frcmaven.wpi.edu"
+version = "2027-4.3-5"
+staticlibs = [
+  "cephes-gtsamRelWithDebInfo",
+  "CppUnitLiteRelWithDebInfo",
+  "gtsam_unstableRelWithDebInfo",
+  "gtsamRelWithDebInfo",
+  "metis-gtsamRelWithDebInfo",
+]
+extract_to = "gtsam"
+
+
+[tool.hatch.build.hooks.semiwrap]
+
+[tool.hatch.build.hooks.meson]
+
+
+[tool.semiwrap]
+update_init = ["gtsam_apriltag gtsam_apriltag._gtsam_apriltag"]
+scan_headers_ignore = []
+
+[tool.semiwrap.name_transform]
+default = "snake_case"
+enum_value = "CAPS_CASE"
+known_words = []
+
+[tool.semiwrap.extension_modules."gtsam_apriltag._gtsam_apriltag"]
+name = "gtsam_apriltag"
+
+depends = [
+    "wpilib",
+    "wpimath",
+]
+
+includes = [
+    "gtsam/include",
+]
+
+[tool.semiwrap.extension_modules."gtsam_apriltag._gtsam_apriltag".headers]
+gtsam_apriltag = "include/gtsam_apriltag.hpp"
