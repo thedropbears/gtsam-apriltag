@@ -1,0 +1,6 @@
+---
+
+classes:
+  gtsam_apriltag::Estimator:
+    methods:
+      foo:
