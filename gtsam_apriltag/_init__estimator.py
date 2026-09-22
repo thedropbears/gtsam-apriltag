@@ -2,3 +2,4 @@
 # fmt: off
 
 import wpilib._init__wpilib
+import wpimath._init__wpimath

@@ -71,7 +71,7 @@ name = "estimator"
 
 depends = [
     "wpilib",
-#    "wpimath",
+    "wpimath",
 ]
 
 includes = [

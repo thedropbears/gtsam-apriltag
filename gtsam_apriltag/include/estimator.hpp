@@ -10,6 +10,6 @@ public:
   auto foo() -> int {return 42;};
 
 private:
-//   gtsam::ISAM2 isam_;
+  gtsam::ISAM2 isam_;
 };
 }  // namespace gtsam_apriltag
