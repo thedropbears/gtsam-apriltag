@@ -15,8 +15,7 @@ libs_path = meson.current_source_dir() + '/gtsam/lib'
 estimator_deps += [
   cpp.find_library('libgtsamRelWithDebInfo', dirs: libs_path, static: true, required: true),
   cpp.find_library('libmetis-gtsamRelWithDebInfo', dirs: libs_path, static: true, required: true),
-  cpp.find_library('tbb', required: true),
-  cpp.find_library('tbbmalloc', required: true),
+  cpp.find_library('libcephes-gtsamRelWithDebInfo', dirs: libs_path, static: true, required: true),
   declare_dependency(include_directories: [
     'gtsam_apriltag/include',
     'gtsam/include',

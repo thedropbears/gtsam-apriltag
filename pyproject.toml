@@ -37,19 +37,18 @@ version-file = "gtsam_apriltag/version.py"
 [tool.hatch.build.targets.wheel]
 packages = ["gtsam_apriltag"]
 
-#[[tool.hatch.build.hooks.robotpy.maven_lib_download]]
-#artifact_id = "gtsam-cpp"
-#group_id = "release.org.wpilib.thirdparty.gtsam"
-#repo_url = "https://frcmaven.wpi.edu"
-#version = "2027-4.3-6"
-#staticlibs = [
-#  "cephes-gtsamRelWithDebInfo",
-#  "CppUnitLiteRelWithDebInfo",
-#  "gtsam_unstableRelWithDebInfo",
-#  "gtsamRelWithDebInfo",
-#  "metis-gtsamRelWithDebInfo",
-#]
-#extract_to = "gtsam"
+[[tool.hatch.build.hooks.robotpy.maven_lib_download]]
+artifact_id = "gtsam-cpp"
+group_id = "release.org.wpilib.thirdparty.gtsam"
+repo_url = "https://frcmaven.wpi.edu"
+version = "2027-4.3-7"
+staticlibs = [
+  "cephes-gtsamRelWithDebInfo",
+  "gtsam_unstableRelWithDebInfo",
+  "gtsamRelWithDebInfo",
+  "metis-gtsamRelWithDebInfo",
+]
+extract_to = "gtsam"
 
 
 [tool.hatch.build.hooks.semiwrap]
