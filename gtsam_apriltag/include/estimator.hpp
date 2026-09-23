@@ -19,6 +19,7 @@
 #pragma once
 
 #include <wpi/fields/Field.hpp>
+#include <wpi/math/geometry/Pose2d.hpp>
 #include <wpi/math/geometry/Transform3d.hpp>
 
 #include <gtsam/nonlinear/IncrementalFixedLagSmoother.h>
@@ -31,7 +32,8 @@ class Estimator
 public:
   explicit Estimator(const wpi::fields::Field & field);
 
-  auto AddObservation(const int tag_id, const wpi::math::Transform3d camera_to_tag) -> void;
+  auto AddObservation(const int tag_id, const wpi::math::Transform3d & camera_to_tag) -> void;
+  auto AddOdometry(const wpi::math::Pose2d & odometry) -> void;
 
 private:
   const wpi::fields::Field field_;

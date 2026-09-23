@@ -5,3 +5,4 @@ classes:
     methods:
       Estimator:
       AddObservation:
+      AddOdometry:
