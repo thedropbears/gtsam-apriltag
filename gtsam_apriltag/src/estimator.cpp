@@ -22,11 +22,15 @@ using namespace gtsam;
 
 namespace gtsam_apriltag
 {
-Estimator::Estimator()
+Estimator::Estimator(const wpi::fields::Field & field) : field_(field)
 {
   ISAM2Params params;
   params.findUnusedFactorSlots = true;
 
   smoother_ = IncrementalFixedLagSmoother(5.0e6, params);  // times are in us
+}
+
+auto Estimator::AddObservation(const int tag_id, const wpi::math::Transform3d camera_to_tag) -> void
+{
 }
 }  // namespace gtsam_apriltag

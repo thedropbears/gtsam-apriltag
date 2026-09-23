@@ -3,3 +3,4 @@
 
 import wpilib._init__wpilib
 import wpimath._init__wpimath
+import robotpy_fields._init__fields

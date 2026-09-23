@@ -8,6 +8,7 @@ requires = [
     "hatch-robotpy",
     "hatch-nativelib",
     "wpilib==2027.0.0a7",
+    "robotpy-fields==2027.0.0a7",
 ]
 
 
@@ -71,6 +72,7 @@ name = "estimator"
 depends = [
     "wpilib",
     "wpimath",
+    "fields",
 ]
 
 includes = [

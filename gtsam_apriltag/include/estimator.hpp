@@ -18,16 +18,23 @@
 
 #pragma once
 
+#include <wpi/fields/Field.hpp>
+#include <wpi/math/geometry/Transform3d.hpp>
+
 #include <gtsam/nonlinear/IncrementalFixedLagSmoother.h>
+#include <gtsam/slam/KnownLandmarkFactor.h>
 
 namespace gtsam_apriltag
 {
 class Estimator
 {
 public:
-  Estimator();
+  explicit Estimator(const wpi::fields::Field & field);
+
+  auto AddObservation(const int tag_id, const wpi::math::Transform3d camera_to_tag) -> void;
 
 private:
+  const wpi::fields::Field field_;
   gtsam::IncrementalFixedLagSmoother smoother_;
 };
 }  // namespace gtsam_apriltag
