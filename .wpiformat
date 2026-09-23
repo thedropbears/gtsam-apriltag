@@ -1,0 +1,9 @@
+cppHeaderFileInclude {
+  \.hpp$
+}
+
+generatedFileExclude {
+  gtsam_apriltag/trampolines/
+  gtsam_apriltag/.*py.*
+  .*lib
+}
