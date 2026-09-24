@@ -22,21 +22,40 @@
 #include <wpi/math/geometry/Pose2d.hpp>
 #include <wpi/math/geometry/Transform3d.hpp>
 
+#include <gtsam/geometry/Pose2.h>
 #include <gtsam/nonlinear/IncrementalFixedLagSmoother.h>
+#include <gtsam/nonlinear/NonlinearFactorGraph.h>
+#include <gtsam/nonlinear/Values.h>
+#include <gtsam/slam/BetweenFactor.h>
 #include <gtsam/slam/KnownLandmarkFactor.h>
 
 namespace gtsam_apriltag
 {
+using wpi::math::Pose2d;
+
 class Estimator
 {
 public:
   explicit Estimator(const wpi::fields::Field & field);
 
-  auto AddObservation(const int tag_id, const wpi::math::Transform3d & camera_to_tag) -> void;
-  auto AddOdometry(const wpi::math::Pose2d & odometry) -> void;
+  auto AddObservation(
+    const double timestamp_seconds, const int tag_id, const wpi::math::Transform3d & camera_to_tag,
+    const wpi::math::Transform3d & base_to_camera) -> void;
+  auto Update(const Pose2d & odometry, const double timestamp_seconds = 0.0) -> Pose2d;
+  auto GetPose() const -> Pose2d;
+  auto Reset() -> void;
 
 private:
   const wpi::fields::Field field_;
   gtsam::IncrementalFixedLagSmoother smoother_;
+  gtsam::NonlinearFactorGraph graph_;
+  gtsam::Values values_;
+  gtsam::FixedLagSmoother::KeyTimestampMap timestamps_;
+
+  Pose2d estimated_pose_;
+
+  Pose2d previous_odom_;
+  gtsam::Key previous_odom_key_;
+  bool initialised_ = false;
 };
 }  // namespace gtsam_apriltag
