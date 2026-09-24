@@ -21,6 +21,7 @@
 #include <wpi/fields/Field.hpp>
 #include <wpi/math/geometry/Pose2d.hpp>
 #include <wpi/math/geometry/Transform3d.hpp>
+#include <wpi/math/interpolation/TimeInterpolatableBuffer.hpp>
 
 #include <gtsam/geometry/Pose2.h>
 #include <gtsam/nonlinear/IncrementalFixedLagSmoother.h>
@@ -39,11 +40,13 @@ public:
   explicit Estimator(const wpi::fields::Field & field);
 
   auto AddObservation(
-    const double timestamp_seconds, const int tag_id, const wpi::math::Transform3d & camera_to_tag,
-    const wpi::math::Transform3d & base_to_camera) -> void;
-  auto Update(const Pose2d & odometry, const double timestamp_seconds = 0.0) -> Pose2d;
+    const wpi::units::second_t timestamp, const int tag_id,
+    const wpi::math::Transform3d & camera_to_tag, const wpi::math::Transform3d & base_to_camera)
+    -> void;
+  auto Update(const Pose2d & odometry, const wpi::units::second_t timestamp = {}) -> Pose2d;
   auto GetPose() const -> Pose2d;
   auto Reset() -> void;
+  auto Print() const -> void;
 
 private:
   const wpi::fields::Field field_;
@@ -51,6 +54,7 @@ private:
   gtsam::NonlinearFactorGraph graph_;
   gtsam::Values values_;
   gtsam::FixedLagSmoother::KeyTimestampMap timestamps_;
+  wpi::math::TimeInterpolatableBuffer<Pose2d> interpolator_;
 
   Pose2d estimated_pose_;
 
