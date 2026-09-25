@@ -31,18 +31,15 @@
 using namespace gtsam;
 using namespace wpi::math;
 
-using symbol_shorthand::X;
-
 namespace gtsam_apriltag
 {
-Estimator::Estimator(const wpi::fields::Field & field)
-: field_(field),
-  interpolator_(wpi::math::TimeInterpolatableBuffer<Pose2d>(wpi::units::second_t(5.0)))
+Estimator::Estimator(const wpi::fields::Field & field, wpi::units::second_t window_size)
+: field_(field), interpolator_(wpi::math::TimeInterpolatableBuffer<Pose2d>(window_size))
 {
   ISAM2Params params;
   params.findUnusedFactorSlots = true;
 
-  smoother_ = IncrementalFixedLagSmoother(5.0, params);  // times are in s
+  smoother_ = IncrementalFixedLagSmoother(window_size.value(), params);  // times are in s
 }
 
 auto Estimator::Reset() -> void
@@ -54,58 +51,23 @@ auto Estimator::Reset() -> void
 
 auto Estimator::AddObservation(
   const wpi::units::second_t timestamp, const int tag_id, const Transform3d & camera_to_tag,
-  const Transform3d & base_to_camera) -> void
+  const Transform3d & base_to_camera, const wpi::units::meter_t uncertainty) -> void
 {
-  // If we don't have at least one factor in the graph we skip adding
-  if (!initialised_) {
-    return;
-  }
-
-  const auto base_to_tag = base_to_camera + camera_to_tag;  // TODO Check ordering
-  const auto key = X(static_cast<uint64_t>(timestamp.value() * 1e6));
-
-  const auto tag = field_.GetTagPose(tag_id);
-  if (!tag) {
-    return;
-  }
-
-  const auto odom_history = interpolator_.GetInternalBuffer();
-
-  if (timestamp < odom_history.front().first) {
-    // If this observation is before our first odom, then throw it away
-    return;
-  } else if (timestamp > odom_history.back().first) {
-    // This is after our most recent odometry
-
-  } else {
-    // In the middle of our existing graph
-    const auto noise = gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector2{0.05, 0.05});
-    const auto landmark_factor = KnownLandmarkFactor<gtsam::Pose2>(
-      key, gtsam::Point2(tag->X().value(), tag->Y().value()),
-      gtsam::Point2(base_to_tag.X().value(), base_to_tag.Y().value()), noise);
-    graph_.add(landmark_factor);
-
-    if (!std::ranges::contains(values_.keys(), key) && !smoother_.getISAM2().valueExists(key)) {
-      const auto odom = interpolator_.Sample(timestamp);
-      const auto next_sample = std::upper_bound(
-        odom_history.begin(), odom_history.end(), std::pair(timestamp, Pose2d()),
-        [](auto lhs, auto rhs) { return lhs.first < rhs.first; });
-      const auto prev_sample = next_sample - 1;
-
-      const auto delta = *odom - prev_sample->second;
-      const auto prev_key = X(static_cast<uint64_t>(prev_sample->first.value() * 1e6));
-      const auto noise = gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector3{0.05, 0.05, 0.05});
-      graph_.add(BetweenFactor<Pose2>(prev_key, key, ToGtsamPose(delta), noise));
-      values_.insert(key, Pose2());
-      timestamps_[key] = timestamp.value();
-    }
-  }
+  observations_.push(
+    Observation{
+      .timestamp = timestamp,
+      .tag_id = tag_id,
+      .camera_to_tag = camera_to_tag,
+      .base_to_camera = base_to_camera,
+      .uncertainty = uncertainty});
 }
 
 auto Estimator::Update(const Pose2d & odometry, const wpi::units::second_t timestamp) -> Pose2d
 {
   const auto noise = gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector3{0.05, 0.05, 0.05});
-  const auto key = X(static_cast<uint64_t>(timestamp.value() * 1e6));
+  const auto key = ToKey(timestamp);
+
+  interpolator_.AddSample(timestamp, odometry);
 
   if (smoother_.getISAM2().valueExists(key)) {
     return GetPose();
@@ -134,13 +96,14 @@ auto Estimator::Update(const Pose2d & odometry, const wpi::units::second_t times
   }
   timestamps_[key] = timestamp.value();
 
+  // Process any observations now that we have the odom up to date
   interpolator_.AddSample(timestamp, odometry);
-  // TODO add pending observations
+  ProcessObservations();
 
   smoother_.update(graph_, values_, timestamps_);
-  /*for (size_t i = 1; i < 2; ++i) {  // Optionally perform multiple iSAM2 iterations
+  for (size_t i = 0; i < 2; ++i) {  // Optionally perform multiple iSAM2 iterations
     smoother_.update();
-  }*/
+  }
 
   timestamps_.clear();
   graph_.resize(0);
@@ -163,5 +126,57 @@ auto Estimator::GetPose() const -> Pose2d
 auto Estimator::Print() const -> void
 {
   smoother_.getFactors().print();
+}
+
+auto Estimator::ProcessObservations() -> void
+{
+  // If we don't have at least one factor in the graph we skip adding
+  if (!initialised_) {
+    return;
+  }
+
+  const auto odom_history = interpolator_.GetInternalBuffer();
+
+  for (auto obs = observations_.front(); !observations_.empty();
+       obs = observations_.front(), observations_.pop()) {
+    const auto tag = field_.GetTagPose(obs.tag_id);
+    if (!tag) {
+      continue;
+    }
+
+    if (obs.timestamp < odom_history.front().first) {
+      // If this observation is before our first odom, then throw it away
+      continue;
+    } else if (obs.timestamp > odom_history.back().first) {
+      // This is after our most recent odometry
+      continue;
+    } else {
+      // In the middle of our existing graph
+      const auto base_to_tag = obs.base_to_camera + obs.camera_to_tag;  // TODO Check ordering
+      const auto key = ToKey(obs.timestamp);
+
+      const auto noise =
+        gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector2{obs.uncertainty, obs.uncertainty});
+      const auto landmark_factor = KnownLandmarkFactor<gtsam::Pose2>(
+        key, gtsam::Point2(tag->X().value(), tag->Y().value()),
+        gtsam::Point2(base_to_tag.X().value(), base_to_tag.Y().value()), noise);
+      graph_.add(landmark_factor);
+
+      if (!std::ranges::contains(values_.keys(), key) && !smoother_.getISAM2().valueExists(key)) {
+        const auto odom = interpolator_.Sample(obs.timestamp);
+        const auto next_sample = std::upper_bound(
+          odom_history.begin(), odom_history.end(), std::pair(obs.timestamp, Pose2d()),
+          [](auto lhs, auto rhs) { return lhs.first < rhs.first; });
+        const auto prev_sample = next_sample - 1;
+
+        const auto delta = *odom - prev_sample->second;
+        const auto prev_key = ToKey(prev_sample->first);
+        const auto noise = gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector3{0.05, 0.05, 0.05});
+        graph_.add(BetweenFactor<Pose2>(prev_key, key, ToGtsamPose(delta), noise));
+        values_.insert(key, Pose2());
+        timestamps_[key] = obs.timestamp.value();
+      }
+    }
+  }
 }
 }  // namespace gtsam_apriltag

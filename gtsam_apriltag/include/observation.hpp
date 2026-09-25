@@ -18,33 +18,17 @@
 
 #pragma once
 
-#include <wpi/math/geometry/Pose2d.hpp>
-#include <wpi/math/geometry/Transform2d.hpp>
-
-#include <gtsam/geometry/Pose2.h>
-#include <gtsam/inference/Symbol.h>
+#include <wpi/math/geometry/Transform3d.hpp>
 
 namespace gtsam_apriltag
 {
-using gtsam::symbol_shorthand::X;
+struct Observation
+{
+  wpi::units::second_t timestamp;
+  int tag_id;
+  wpi::math::Transform3d camera_to_tag;
+  wpi::math::Transform3d base_to_camera;
+  wpi::units::meter_t uncertainty;
+};
 
-inline auto ToWpiPose(const gtsam::Pose2 & pose) -> wpi::math::Pose2d
-{
-  return wpi::math::Pose2d{
-    wpi::units::meter_t{pose.x()}, wpi::units::meter_t{pose.y()},
-    wpi::math::Rotation2d{pose.rotation().matrix()}};
-}
-inline auto ToGtsamPose(const wpi::math::Pose2d & pose) -> gtsam::Pose2
-{
-  return gtsam::Pose2{pose.X().value(), pose.Y().value(), pose.Rotation().Radians().value()};
-}
-inline auto ToGtsamPose(const wpi::math::Transform2d & transform) -> gtsam::Pose2
-{
-  return gtsam::Pose2{
-    transform.X().value(), transform.Y().value(), transform.Rotation().Radians().value()};
-}
-inline auto ToKey(const wpi::units::second_t timestamp)
-{
-  return X(static_cast<uint64_t>(timestamp.value() * 1e6));
-}
 }  // namespace gtsam_apriltag

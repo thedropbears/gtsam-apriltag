@@ -18,6 +18,8 @@
 
 #pragma once
 
+#include "observation.hpp"
+
 #include <wpi/fields/Field.hpp>
 #include <wpi/math/geometry/Pose2d.hpp>
 #include <wpi/math/geometry/Transform3d.hpp>
@@ -30,6 +32,8 @@
 #include <gtsam/slam/BetweenFactor.h>
 #include <gtsam/slam/KnownLandmarkFactor.h>
 
+#include <queue>
+
 namespace gtsam_apriltag
 {
 using wpi::math::Pose2d;
@@ -37,24 +41,28 @@ using wpi::math::Pose2d;
 class Estimator
 {
 public:
-  explicit Estimator(const wpi::fields::Field & field);
+  Estimator(
+    const wpi::fields::Field & field, wpi::units::second_t window_size = wpi::units::second_t{5.0});
 
   auto AddObservation(
     const wpi::units::second_t timestamp, const int tag_id,
-    const wpi::math::Transform3d & camera_to_tag, const wpi::math::Transform3d & base_to_camera)
-    -> void;
+    const wpi::math::Transform3d & camera_to_tag, const wpi::math::Transform3d & base_to_camera,
+    const wpi::units::meter_t uncertainty = wpi::units::meter_t{0.05}) -> void;
   auto Update(const Pose2d & odometry, const wpi::units::second_t timestamp = {}) -> Pose2d;
   auto GetPose() const -> Pose2d;
   auto Reset() -> void;
   auto Print() const -> void;
 
 private:
+  auto ProcessObservations() -> void;
+
   const wpi::fields::Field field_;
   gtsam::IncrementalFixedLagSmoother smoother_;
   gtsam::NonlinearFactorGraph graph_;
   gtsam::Values values_;
   gtsam::FixedLagSmoother::KeyTimestampMap timestamps_;
   wpi::math::TimeInterpolatableBuffer<Pose2d> interpolator_;
+  std::queue<Observation> observations_;
 
   Pose2d estimated_pose_;
 
