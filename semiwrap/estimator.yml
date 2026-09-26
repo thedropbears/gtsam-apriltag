@@ -8,5 +8,6 @@ classes:
       GetPose:
       Print:
       Reset:
+      SetFloatingTagIds:
       SetOdometryStdDevs:
       Update:

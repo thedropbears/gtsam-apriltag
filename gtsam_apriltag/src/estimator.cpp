@@ -23,13 +23,17 @@
 #include <wpi/math/geometry/Pose3d.hpp>
 
 #include <gtsam/geometry/Point2.h>
+#include <gtsam/sam/BearingRangeFactor.h>
 #include <gtsam/slam/KnownLandmarkFactor.h>
 
 #include <algorithm>
+#include <cmath>
 #include <print>
+#include <vector>
 
 using namespace gtsam;
 using namespace wpi::math;
+using gtsam::symbol_shorthand::L;
 
 namespace gtsam_apriltag
 {
@@ -68,12 +72,6 @@ auto Estimator::Update(const Pose2d & odometry, const wpi::units::second_t times
 {
   const auto key = ToKey(timestamp);
 
-  interpolator_.AddSample(timestamp, odometry);
-
-  if (smoother_.getISAM2().valueExists(key)) {
-    return GetPose();
-  }
-
   // If this is the first update, then we can't add between factors
   if (!initialised_) {
     const auto gtsam_pose = ToGtsamPose(odometry);
@@ -86,7 +84,7 @@ auto Estimator::Update(const Pose2d & odometry, const wpi::units::second_t times
 
     previous_odom_ = odometry;
     estimated_pose_ = odometry;
-  } else {
+  } else if (!smoother_.getISAM2().valueExists(key)) {
     // Calculate a between factor for our new odometry
     const auto delta = odometry - previous_odom_;
     graph_.add(BetweenFactor<Pose2>(previous_odom_key_, key, ToGtsamPose(delta), odometry_noise_));
@@ -127,11 +125,20 @@ auto Estimator::GetPose() const -> Pose2d
 auto Estimator::Print() const -> void
 {
   smoother_.getFactors().print();
+  for (const auto id : floating_tags_) {
+    const auto pos = smoother_.calculateEstimate<gtsam::Point2>(L(id));
+    std::println("Floating tag {}: {}", id, pos);
+  }
 }
 
 auto Estimator::SetOdometryStdDevs(const double x, const double y, const double theta) -> void
 {
   odometry_noise_ = gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector3{x, y, theta});
+}
+
+auto Estimator::SetFloatingTagIds(const std::vector<int> floating_tags) -> void
+{
+  floating_tags_ = floating_tags;
 }
 
 auto Estimator::ProcessObservations() -> void
@@ -143,12 +150,9 @@ auto Estimator::ProcessObservations() -> void
 
   const auto odom_history = interpolator_.GetInternalBuffer();
 
-  for (auto obs = observations_.front(); !observations_.empty();
-       obs = observations_.front(), observations_.pop()) {
-    const auto tag = field_.GetTagPose(obs.tag_id);
-    if (!tag) {
-      continue;
-    }
+  while (!observations_.empty()) {
+    const auto obs = observations_.front();
+    observations_.pop();
 
     if (obs.timestamp < odom_history.front().first) {
       // If this observation is before our first odom, then throw it away
@@ -161,12 +165,37 @@ auto Estimator::ProcessObservations() -> void
       const auto base_to_tag = obs.base_to_camera + obs.camera_to_tag;  // TODO Check ordering
       const auto key = ToKey(obs.timestamp);
 
-      const auto noise =
-        gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector2{obs.uncertainty, obs.uncertainty});
-      const auto landmark_factor = KnownLandmarkFactor<gtsam::Pose2>(
-        key, gtsam::Point2(tag->X().value(), tag->Y().value()),
-        gtsam::Point2(base_to_tag.X().value(), base_to_tag.Y().value()), noise);
-      graph_.add(landmark_factor);
+      if (std::ranges::contains(floating_tags_, obs.tag_id)) {
+        const auto landmark_key = L(obs.tag_id);
+        const auto trans = base_to_tag.Translation().ToTranslation2d();
+        const auto range = trans.Norm().value();
+        const auto bearing = gtsam::Rot2::atan2(trans.Y().value(), trans.X().value());
+
+        // TODO Approximate bearing uncertainty at this range
+        const auto noise = gtsam::noiseModel::Diagonal::Sigmas(
+          gtsam::Vector2{obs.uncertainty.value(), obs.uncertainty.value()});
+        const auto bearing_range_factor =
+          BearingRangeFactor<Pose2, Point2>(key, landmark_key, bearing, range, noise);
+        graph_.add(bearing_range_factor);
+        if (
+          !std::ranges::contains(values_.keys(), landmark_key) &&
+          !smoother_.getISAM2().valueExists(landmark_key)) {
+          values_.insert(landmark_key, Point2());
+        }
+        timestamps_[landmark_key] = obs.timestamp.value();
+      } else {
+        const auto noise = gtsam::noiseModel::Diagonal::Sigmas(
+          gtsam::Vector2{obs.uncertainty.value(), obs.uncertainty.value()});
+        const auto tag = field_.GetTagPose(obs.tag_id);
+        if (!tag) {
+          continue;
+        }
+
+        const auto landmark_factor = KnownLandmarkFactor<gtsam::Pose2>(
+          key, gtsam::Point2(tag->X().value(), tag->Y().value()),
+          gtsam::Point2(base_to_tag.X().value(), base_to_tag.Y().value()), noise);
+        graph_.add(landmark_factor);
+      }
 
       if (!std::ranges::contains(values_.keys(), key) && !smoother_.getISAM2().valueExists(key)) {
         const auto odom = interpolator_.Sample(obs.timestamp);

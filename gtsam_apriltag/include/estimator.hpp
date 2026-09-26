@@ -34,6 +34,7 @@
 #include <gtsam/slam/KnownLandmarkFactor.h>
 
 #include <queue>
+#include <vector>
 
 namespace gtsam_apriltag
 {
@@ -54,6 +55,7 @@ public:
   auto Reset() -> void;
   auto Print() const -> void;
   auto SetOdometryStdDevs(const double x, const double y, const double theta) -> void;
+  auto SetFloatingTagIds(const std::vector<int> floating_tags) -> void;
 
 private:
   auto ProcessObservations() -> void;
@@ -66,6 +68,8 @@ private:
   wpi::math::TimeInterpolatableBuffer<Pose2d> interpolator_;
   std::queue<Observation> observations_;
   gtsam::noiseModel::Diagonal::shared_ptr odometry_noise_;
+
+  std::vector<int> floating_tags_;
 
   Pose2d estimated_pose_;
 
