@@ -26,6 +26,7 @@
 #include <wpi/math/interpolation/TimeInterpolatableBuffer.hpp>
 
 #include <gtsam/geometry/Pose2.h>
+#include <gtsam/linear/NoiseModel.h>
 #include <gtsam/nonlinear/IncrementalFixedLagSmoother.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
@@ -52,6 +53,7 @@ public:
   auto GetPose() const -> Pose2d;
   auto Reset() -> void;
   auto Print() const -> void;
+  auto SetOdometryStdDevs(const double x, const double y, const double theta) -> void;
 
 private:
   auto ProcessObservations() -> void;
@@ -63,6 +65,7 @@ private:
   gtsam::FixedLagSmoother::KeyTimestampMap timestamps_;
   wpi::math::TimeInterpolatableBuffer<Pose2d> interpolator_;
   std::queue<Observation> observations_;
+  gtsam::noiseModel::Diagonal::shared_ptr odometry_noise_;
 
   Pose2d estimated_pose_;
 

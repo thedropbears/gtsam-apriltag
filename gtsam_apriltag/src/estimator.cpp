@@ -34,7 +34,9 @@ using namespace wpi::math;
 namespace gtsam_apriltag
 {
 Estimator::Estimator(const wpi::fields::Field & field, wpi::units::second_t window_size)
-: field_(field), interpolator_(wpi::math::TimeInterpolatableBuffer<Pose2d>(window_size))
+: field_(field),
+  interpolator_(wpi::math::TimeInterpolatableBuffer<Pose2d>(window_size)),
+  odometry_noise_(gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector3{0.05, 0.05, 0.05}))
 {
   ISAM2Params params;
   params.findUnusedFactorSlots = true;
@@ -64,7 +66,6 @@ auto Estimator::AddObservation(
 
 auto Estimator::Update(const Pose2d & odometry, const wpi::units::second_t timestamp) -> Pose2d
 {
-  const auto noise = gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector3{0.05, 0.05, 0.05});
   const auto key = ToKey(timestamp);
 
   interpolator_.AddSample(timestamp, odometry);
@@ -88,7 +89,7 @@ auto Estimator::Update(const Pose2d & odometry, const wpi::units::second_t times
   } else {
     // Calculate a between factor for our new odometry
     const auto delta = odometry - previous_odom_;
-    graph_.add(BetweenFactor<Pose2>(previous_odom_key_, key, ToGtsamPose(delta), noise));
+    graph_.add(BetweenFactor<Pose2>(previous_odom_key_, key, ToGtsamPose(delta), odometry_noise_));
     previous_odom_key_ = key;
     previous_odom_ = odometry;
 
@@ -126,6 +127,11 @@ auto Estimator::GetPose() const -> Pose2d
 auto Estimator::Print() const -> void
 {
   smoother_.getFactors().print();
+}
+
+auto Estimator::SetOdometryStdDevs(const double x, const double y, const double theta) -> void
+{
+  odometry_noise_ = gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector3{x, y, theta});
 }
 
 auto Estimator::ProcessObservations() -> void
@@ -171,8 +177,7 @@ auto Estimator::ProcessObservations() -> void
 
         const auto delta = *odom - prev_sample->second;
         const auto prev_key = ToKey(prev_sample->first);
-        const auto noise = gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector3{0.05, 0.05, 0.05});
-        graph_.add(BetweenFactor<Pose2>(prev_key, key, ToGtsamPose(delta), noise));
+        graph_.add(BetweenFactor<Pose2>(prev_key, key, ToGtsamPose(delta), odometry_noise_));
         values_.insert(key, Pose2());
         timestamps_[key] = obs.timestamp.value();
       }

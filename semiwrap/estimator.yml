@@ -8,4 +8,5 @@ classes:
       GetPose:
       Print:
       Reset:
+      SetOdometryStdDevs:
       Update:
