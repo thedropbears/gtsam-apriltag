@@ -1,0 +1,31 @@
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.1.0
+    hooks:
+    - id: trailing-whitespace
+    - id: fix-byte-order-marker
+    - id: end-of-file-fixer
+    - id: mixed-line-ending
+    # Non-modifying checks
+    - id: check-added-large-files
+    - id: check-case-conflict
+    - id: check-merge-conflict
+    - id: check-toml
+    - id: check-yaml
+    - id: check-json
+
+-   repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.1
+    hooks:
+      - id: ruff-check
+        args:
+          - "--fix"
+      - id: ruff-format
+
+-   repo: local
+    hooks:
+    -   id: wpiformat
+        name: wpiformat
+        entry: uv run wpiformat
+        language: python
+        pass_filenames: false
