@@ -15,6 +15,7 @@ dist
 /gtsam_apriltag/_init__rev.py
 /gtsam_apriltag/_init_revlib.py
 /gtsam_apriltag/*.pc
+/gtsam_apriltag/trampolines/*
 /gtsam
 
 *.dylib

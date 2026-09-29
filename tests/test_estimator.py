@@ -7,7 +7,7 @@ import gtsam
 import gtsam_apriltag
 
 
-def test_gtsam():
+def test_gtsam_tags():
     field = robotpy_fields.get_field(robotpy_fields.FieldId.FRC_2026_REBUILT_WELDED)
 
     x1 = gtsam.symbol("x", 1)
@@ -84,6 +84,82 @@ def test_gtsam():
         print(field.get_tag_pose(i))
         print()
     """
+    assert abs(robot_pose.translation().x - final_estimate.x()) < 0.01
+    assert abs(robot_pose.translation().y - final_estimate.y()) < 0.01
+
+
+def test_gtsam_corners():
+    x1 = gtsam.symbol("x", 1)
+    x2 = gtsam.symbol("x", 2)
+    x3 = gtsam.symbol("x", 3)
+    values = gtsam.Values()
+
+    robot_pose = wpimath.Pose3d(
+        10, 10, 0, wpimath.Rotation3d.from_degrees(0.0, 0.0, 90.0)
+    )
+    odom_noise = gtsam.noiseModel.Diagonal.Sigmas([0.5, 0.5, 0.5])
+    corner_noise = gtsam.noiseModel.Diagonal.Sigmas([1.0, 1.0])
+
+    params = gtsam.ISAM2Params()
+    params.findUnusedFactorSlots = True
+    smoother = gtsam.IncrementalFixedLagSmoother(5.0, params)
+    graph = gtsam.NonlinearFactorGraph()
+    timestamps = {}
+    graph.addPriorPose2(
+        x1, gtsam.Pose2(1, 1, 0), gtsam.noiseModel.Diagonal.Sigmas([30.0, 30.0, 1.5])
+    )
+    graph.add(gtsam.BetweenFactorPose2(x1, x2, gtsam.Pose2(1, 1, 0), odom_noise))
+    values.insert(x1, gtsam.Pose2(1, 1, 0))
+    values.insert(x2, gtsam.Pose2(1, 1, 0))
+    timestamps[x1] = 1.0
+    timestamps[x2] = 2.0
+    smoother.update(graph, values, timestamps)
+
+    graph.resize(0)
+    values.clear()
+    timestamps = {}
+
+    intrinsics = [
+        865.1367441026429,
+        0.0,
+        479.5,
+        0.0,
+        599.1666666666669,
+        359.5,
+        0.0,
+        0.0,
+        1.0,
+    ]
+    distortion = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    cc = gtsam_apriltag.CameraCalibration(intrinsics, distortion)
+    gtsam_calib = gtsam.Cal3DS2(
+        cc.fx, cc.fy, cc.s, cc.u0, cc.v0, cc.k1, cc.k2, cc.p1, cc.p2
+    )
+
+    for x, y in [(-1.0, -1.0), (+1.0, -1.0), (+1.0, +1.0), (-1.0, +1.0)]:
+        graph.add(
+            gtsam.PlanarProjectionFactor1(
+                x2,
+                [10.0, 0 + 0.1 * x, 0 + 0.1 * y],
+                [480 - 25 * x, 360 - 25 * y],
+                gtsam.Pose3(
+                    gtsam.Rot3([[0.0, 0.0, 1.0], [-1.0, 0.0, 0.0], [0.0, -1.0, 0.0]]),
+                    [0.0, 0.0, 0.0],
+                ),
+                gtsam_calib,
+                corner_noise,
+            )
+        )
+
+    graph.add(gtsam.BetweenFactorPose2(x2, x3, gtsam.Pose2(), odom_noise))
+    values.insert(x3, gtsam.Pose2(1, 1, 0))
+    timestamps[x3] = 3.0
+
+    smoother.update(graph, values, timestamps)
+
+    final_estimate = smoother.calculateEstimatePose2(x3)
+    print(final_estimate)
+    smoother.getFactors().print()
     assert abs(robot_pose.translation().x - final_estimate.x()) < 0.01
     assert abs(robot_pose.translation().y - final_estimate.y()) < 0.01
 
