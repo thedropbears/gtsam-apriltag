@@ -81,3 +81,4 @@ includes = [
 
 [tool.semiwrap.extension_modules."gtsam_apriltag._estimator".headers]
 estimator = "include/estimator.hpp"
+observation = "include/observation.hpp"

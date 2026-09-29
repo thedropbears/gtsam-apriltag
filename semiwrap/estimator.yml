@@ -5,6 +5,7 @@ classes:
     methods:
       Estimator:
       AddObservation:
+      AddCornersObservation:
       GetPose:
       Print:
       Reset:

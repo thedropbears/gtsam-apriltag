@@ -1,0 +1,6 @@
+---
+
+classes:
+  gtsam_apriltag::CameraCalibration:
+  gtsam_apriltag::TagObservation:
+  gtsam_apriltag::CornersObservation:

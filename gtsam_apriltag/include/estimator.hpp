@@ -25,6 +25,7 @@
 #include <wpi/math/geometry/Transform3d.hpp>
 #include <wpi/math/interpolation/TimeInterpolatableBuffer.hpp>
 
+#include <gtsam/geometry/Cal3DS2.h>
 #include <gtsam/geometry/Pose2.h>
 #include <gtsam/linear/NoiseModel.h>
 #include <gtsam/nonlinear/IncrementalFixedLagSmoother.h>
@@ -33,6 +34,7 @@
 #include <gtsam/slam/BetweenFactor.h>
 #include <gtsam/slam/KnownLandmarkFactor.h>
 
+#include <array>
 #include <queue>
 #include <vector>
 
@@ -46,10 +48,8 @@ public:
   Estimator(
     const wpi::fields::Field & field, wpi::units::second_t window_size = wpi::units::second_t{5.0});
 
-  auto AddObservation(
-    const wpi::units::second_t timestamp, const int tag_id,
-    const wpi::math::Transform3d & camera_to_tag, const wpi::math::Transform3d & base_to_camera,
-    const wpi::units::meter_t uncertainty = wpi::units::meter_t{0.05}) -> void;
+  auto AddObservation(const TagObservation & obs) -> void;
+  auto AddObservation(const CornersObservation & obs) -> void;
   auto Update(const Pose2d & odometry, const wpi::units::second_t timestamp = {}) -> Pose2d;
   auto GetPose() const -> Pose2d;
   auto Reset() -> void;
@@ -59,6 +59,9 @@ public:
 
 private:
   auto ProcessObservations() -> void;
+  auto ProcessTagObservations() -> void;
+  auto ProcessCornersObservations() -> void;
+  auto AddOdomForObservation(wpi::units::second_t timestamp) -> void;
 
   const wpi::fields::Field field_;
   gtsam::IncrementalFixedLagSmoother smoother_;
@@ -66,7 +69,8 @@ private:
   gtsam::Values values_;
   gtsam::FixedLagSmoother::KeyTimestampMap timestamps_;
   wpi::math::TimeInterpolatableBuffer<Pose2d> interpolator_;
-  std::queue<Observation> observations_;
+  std::queue<TagObservation> tag_observations_;
+  std::queue<CornersObservation> corners_observations_;
   gtsam::noiseModel::Diagonal::shared_ptr odometry_noise_;
 
   std::vector<int> floating_tags_;
