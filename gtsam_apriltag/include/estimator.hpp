@@ -28,6 +28,7 @@
 #include <gtsam/geometry/Cal3DS2.h>
 #include <gtsam/geometry/Pose2.h>
 #include <gtsam/linear/NoiseModel.h>
+#include <gtsam/navigation/PlanarGyroFactor.h>
 #include <gtsam/nonlinear/IncrementalFixedLagSmoother.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
@@ -35,12 +36,16 @@
 #include <gtsam/slam/KnownLandmarkFactor.h>
 
 #include <array>
+#include <memory>
 #include <queue>
+#include <set>
 #include <vector>
 
 namespace gtsam_apriltag
 {
 using wpi::math::Pose2d;
+using wpi::math::Rotation2d;
+using wpi::math::Twist2d;
 
 class Estimator
 {
@@ -50,7 +55,9 @@ public:
 
   auto AddObservation(const TagObservation & obs) -> void;
   auto AddObservation(const CornersObservation & obs) -> void;
-  auto Update(const Pose2d & odometry, const wpi::units::second_t timestamp = {}) -> Pose2d;
+  auto Update(
+    const Rotation2d & imu_delta, const Twist2d & robot_delta, const double dt,
+    const wpi::units::second_t timestamp = {}) -> Pose2d;
   auto GetPose() const -> Pose2d;
   auto Reset() -> void;
   auto Print() const -> void;
@@ -73,12 +80,16 @@ private:
   std::queue<CornersObservation> corners_observations_;
   gtsam::noiseModel::Diagonal::shared_ptr odometry_noise_;
 
+  std::shared_ptr<gtsam::PlanarGyroParams> imu_params_;
+
   std::vector<int> floating_tags_;
+  std::set<int> seen_floating_tags_;
 
   Pose2d estimated_pose_;
 
   Pose2d previous_odom_;
-  gtsam::Key previous_odom_key_;
+  gtsam::Key previous_pose_key_;
+  gtsam::Key previous_bias_key_;
   bool initialised_ = false;
 };
 }  // namespace gtsam_apriltag

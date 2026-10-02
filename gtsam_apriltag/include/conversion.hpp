@@ -31,6 +31,7 @@
 
 namespace gtsam_apriltag
 {
+using gtsam::symbol_shorthand::B;
 using gtsam::symbol_shorthand::X;
 
 inline auto ToWpi(const gtsam::Pose2 & pose) -> wpi::math::Pose2d
@@ -46,6 +47,10 @@ inline auto ToGtsam(const wpi::math::Pose2d & pose) -> gtsam::Pose2
 inline auto ToGtsam(const wpi::math::Pose3d & pose) -> gtsam::Pose3
 {
   return gtsam::Pose3(pose.ToMatrix());
+}
+inline auto ToGtsam(const wpi::math::Rotation2d & rotation) -> gtsam::Rot2
+{
+  return gtsam::Rot2(rotation.Radians().value());
 }
 inline auto ToGtsam(const wpi::math::Transform2d & transform) -> gtsam::Pose2
 {
@@ -64,6 +69,10 @@ inline auto ToGtsam(const wpi::math::Translation3d & translation) -> gtsam::Poin
 {
   return gtsam::Point3(translation.X().value(), translation.Y().value(), translation.Z().value());
 }
+inline auto ToGtsam(const wpi::math::Twist2d & twist) -> gtsam::Pose2
+{
+  return gtsam::Pose2(twist.dx(), twist.dy(), twist.dtheta());
+}
 inline auto ToGtsam(const CameraCalibration & camera_calibration) -> gtsam::Cal3DS2
 {
   return gtsam::Cal3DS2(
@@ -71,9 +80,13 @@ inline auto ToGtsam(const CameraCalibration & camera_calibration) -> gtsam::Cal3
     camera_calibration.v0, camera_calibration.k1, camera_calibration.k2, camera_calibration.p1,
     camera_calibration.p2);
 }
-inline auto ToKey(const wpi::units::second_t timestamp)
+inline auto ToPoseKey(const wpi::units::second_t timestamp)
 {
   return X(static_cast<uint64_t>(timestamp.value() * 1e6));
+}
+inline auto ToBiasKey(const wpi::units::second_t timestamp)
+{
+  return B(static_cast<uint64_t>(timestamp.value() * 1e6));
 }
 inline auto ApriltagCorners(const wpi::math::Pose3d & pose) -> std::array<gtsam::Point3, 4>
 {

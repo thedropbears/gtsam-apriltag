@@ -23,17 +23,23 @@
 #include <wpi/math/geometry/Pose3d.hpp>
 
 #include <gtsam/geometry/Point2.h>
+#include <gtsam/navigation/PlanarGyroFactor.h>
 #include <gtsam/sam/BearingRangeFactor.h>
+#include <gtsam/sam/RangeFactor.h>
 #include <gtsam/slam/KnownLandmarkFactor.h>
+#undef GTSAM_THROW_CHEIRALITY_EXCEPTION
 #include <gtsam/slam/PlanarProjectionFactor.h>
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <print>
 #include <vector>
 
 using namespace gtsam;
 using namespace wpi::math;
+using gtsam::symbol_shorthand::B;
+using gtsam::symbol_shorthand::C;
 using gtsam::symbol_shorthand::L;
 
 namespace gtsam_apriltag
@@ -47,6 +53,8 @@ Estimator::Estimator(const wpi::fields::Field & field, wpi::units::second_t wind
   params.findUnusedFactorSlots = true;
 
   smoother_ = IncrementalFixedLagSmoother(window_size.value(), params);  // times are in s
+
+  imu_params_ = std::make_shared<PlanarGyroParams>(0.01, 0.01);
 }
 
 auto Estimator::Reset() -> void
@@ -66,48 +74,64 @@ auto Estimator::AddObservation(const CornersObservation & obs) -> void
   corners_observations_.push(obs);
 }
 
-auto Estimator::Update(const Pose2d & odometry, const wpi::units::second_t timestamp) -> Pose2d
+auto Estimator::Update(
+  const Rotation2d & imu_delta, const Twist2d & robot_delta, const double dt,
+  const wpi::units::second_t timestamp) -> Pose2d
 {
-  const auto key = ToKey(timestamp);
+  const auto pose_key = ToPoseKey(timestamp);
+  const auto bias_key = ToBiasKey(timestamp);
 
   // If this is the first update, then we can't add between factors
   if (!initialised_) {
-    const auto gtsam_pose = ToGtsam(odometry);
     // Big uncertainty for first observation - then correct with tags
     gtsam::Vector3 sigmas{30.0, 30.0, 1.5};
 
-    graph_.addPrior(key, gtsam_pose, gtsam::noiseModel::Diagonal::Sigmas(sigmas));
-    previous_odom_key_ = key;
-    values_.insert(key, gtsam_pose);
+    graph_.addPrior(pose_key, Pose2(), gtsam::noiseModel::Diagonal::Sigmas(sigmas));
+    values_.insert(pose_key, gtsam::Pose2());
+    graph_.addPrior(bias_key, 0.0, Diagonal::Sigmas(Vector1(1)));
+    values_.insert(bias_key, 0.0);
+    previous_pose_key_ = pose_key;
+    previous_bias_key_ = bias_key;
 
-    previous_odom_ = odometry;
-    estimated_pose_ = odometry;
-  } else if (!smoother_.getISAM2().valueExists(key)) {
+    previous_odom_ = wpi::math::Pose2d();
+    estimated_pose_ = previous_odom_;
+  } else if (!smoother_.getISAM2().valueExists(pose_key)) {
     // Calculate a between factor for our new odometry
-    const auto delta = odometry - previous_odom_;
-    graph_.add(BetweenFactor<Pose2>(previous_odom_key_, key, ToGtsam(delta), odometry_noise_));
-    previous_odom_key_ = key;
-    previous_odom_ = odometry;
+    const auto delta =
+      Pose2::Expmap(gtsam::Vector3{robot_delta.dx(), robot_delta.dy(), robot_delta.dtheta()});
 
-    values_.insert(key, ToGtsam(GetPose() + delta));
+    graph_.add(BetweenFactor<Pose2>(previous_pose_key_, pose_key, delta, odometry_noise_));
+
+    graph_.add(
+      PlanarGyroFactor::FromRotation(
+        previous_pose_key_, pose_key, bias_key, imu_params_, ToGtsam(imu_delta), dt));
+    graph_.add(PlanarGyroBiasFactor(previous_bias_key_, bias_key, imu_params_));
+
+    previous_pose_key_ = pose_key;
+    previous_bias_key_ = bias_key;
+    previous_odom_ = previous_odom_ + robot_delta.Exp();
+
+    values_.insert(pose_key, ToGtsam(GetPose() + robot_delta.Exp()));
+    values_.insert(bias_key, 0.0);
   }
-  timestamps_[key] = timestamp.value();
+  timestamps_[pose_key] = timestamp.value();
+  timestamps_[bias_key] = timestamp.value();
 
   // Process any observations now that we have the odom up to date
-  interpolator_.AddSample(timestamp, odometry);
+  interpolator_.AddSample(timestamp, previous_odom_);
   ProcessObservations();
 
   smoother_.update(graph_, values_, timestamps_);
-  for (size_t i = 0; i < 2; ++i) {  // Optionally perform multiple iSAM2 iterations
+  /*for (size_t i = 0; i < 2; ++i) {  // Optionally perform multiple iSAM2 iterations
     smoother_.update();
-  }
+  }*/
 
   timestamps_.clear();
   graph_.resize(0);
   values_.clear();
 
   if (initialised_) {
-    estimated_pose_ = ToWpi(smoother_.calculateEstimate<gtsam::Pose2>(key));
+    estimated_pose_ = ToWpi(smoother_.calculateEstimate<gtsam::Pose2>(pose_key));
   }
 
   initialised_ = true;
@@ -163,7 +187,7 @@ auto Estimator::ProcessTagObservations() -> void
     } else {
       // In the middle of our existing graph
       const auto base_to_tag = obs.base_to_camera + obs.camera_to_tag;  // TODO Check ordering
-      const auto obs_key = ToKey(obs.timestamp);
+      const auto obs_key = ToPoseKey(obs.timestamp);
 
       const auto landmark_key = L(obs.tag_id);
       const auto trans = base_to_tag.Translation().ToTranslation2d();
@@ -214,21 +238,47 @@ auto Estimator::ProcessCornersObservations() -> void
       // If this observation is before our first odom or past our last, then throw it away
       continue;
     } else {
-      // In the middle of our existing graph
-      const auto tag = field_.GetTagPose(obs.tag_id);
-      if (!tag) {
-        continue;
-      }
-      const auto obs_key = ToKey(obs.timestamp);
-
-      const auto noise = gtsam::noiseModel::Diagonal::Sigmas(
+      const auto corner_noise = gtsam::noiseModel::Diagonal::Sigmas(
         gtsam::Vector2{obs.pixel_uncertainty, obs.pixel_uncertainty});
-      for (const auto & [image_corner, field_corner] :
-           std::views::zip(obs.corners, ApriltagCorners(*tag))) {
-        const auto factor = gtsam::PlanarProjectionFactor1(
-          obs_key, field_corner, ToGtsam(image_corner), ToGtsam(obs.base_to_camera),
-          ToGtsam(obs.camera_calibration), noise);
-        graph_.add(factor);
+      const auto obs_key = ToPoseKey(obs.timestamp);
+
+      if (!std::ranges::contains(floating_tags_, obs.tag_id)) {
+        // In the middle of our existing graph
+        const auto tag = field_.GetTagPose(obs.tag_id);
+        if (!tag) {
+          continue;
+        }
+
+        for (const auto & [image_corner, field_corner] :
+             std::views::zip(obs.corners, ApriltagCorners(*tag))) {
+          const auto factor = gtsam::PlanarProjectionFactor1(
+            obs_key, field_corner, ToGtsam(image_corner), ToGtsam(obs.base_to_camera),
+            ToGtsam(obs.camera_calibration), corner_noise);
+          graph_.add(factor);
+        }
+      } else {
+        // Floating tag
+        for (const auto & [idx, image_corner] : std::views::enumerate(obs.corners)) {
+          const auto corner_key = C(obs.tag_id * 10 + idx);
+          const auto factor = gtsam::PlanarProjectionFactor2(
+            obs_key, corner_key, ToGtsam(image_corner), ToGtsam(obs.base_to_camera),
+            ToGtsam(obs.camera_calibration), corner_noise);
+          graph_.add(factor);
+          timestamps_[corner_key] = obs.timestamp.value();
+        }
+        if (!seen_floating_tags_.contains(obs.tag_id)) {
+          // First time with this tag, so add range factors to constrain the corners
+          for (auto i = 0; i < 4; i++) {
+            const auto c1 = C(obs.tag_id * 10 + i);
+            const auto c2 = C(obs.tag_id * 10 + (i + 1) % 4);
+            const auto factor = gtsam::RangeFactor<Point3, Point3>(
+              c1, c2, wpi::units::inch_t(6.5).value(),
+              gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector1{0.001}));
+            graph_.add(factor);
+            values_.insert(c1, Point3());
+          }
+          seen_floating_tags_.insert(obs.tag_id);
+        }
       }
 
       AddOdomForObservation(obs.timestamp);
@@ -238,7 +288,7 @@ auto Estimator::ProcessCornersObservations() -> void
 
 auto Estimator::AddOdomForObservation(wpi::units::second_t timestamp) -> void
 {
-  const auto obs_key = ToKey(timestamp);
+  const auto obs_key = ToPoseKey(timestamp);
   const auto odom_history = interpolator_.GetInternalBuffer();
   if (
     !std::ranges::contains(values_.keys(), obs_key) && !smoother_.getISAM2().valueExists(obs_key)) {
@@ -249,7 +299,7 @@ auto Estimator::AddOdomForObservation(wpi::units::second_t timestamp) -> void
     const auto prev_sample = next_sample - 1;
 
     const auto delta = *odom - prev_sample->second;
-    const auto prev_key = ToKey(prev_sample->first);
+    const auto prev_key = ToPoseKey(prev_sample->first);
     graph_.add(BetweenFactor<Pose2>(prev_key, obs_key, ToGtsam(delta), odometry_noise_));
     const auto delta_to_current = odom_history.back().second - *odom;
     values_.insert(obs_key, ToGtsam(estimated_pose_ + delta_to_current));

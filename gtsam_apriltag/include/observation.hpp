@@ -98,10 +98,15 @@ struct CornersObservation
     tag_id(tag_id),
     corners(corners),
     camera_calibration(camera_calibration),
-    base_to_camera(base_to_camera),
+    // Convert from PhotonVision where x is forward like the robot chassis
+    // to GTSAM where z is forward like OpenCV
+    base_to_camera(
+      base_to_camera + wpi::math::Transform3d(
+                         wpi::math::Translation3d(),
+                         wpi::math::Rotation3d(
+                           Eigen::Matrix3d{{0.0, 0.0, 1.0}, {-1.0, 0.0, 0.0}, {0.0, -1.0, 0.0}}))),
     pixel_uncertainty(pixel_uncertainty)
   {
   }
 };
-
 }  // namespace gtsam_apriltag
