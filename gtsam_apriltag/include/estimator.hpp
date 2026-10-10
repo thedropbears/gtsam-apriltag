@@ -51,7 +51,7 @@ class Estimator
 {
 public:
   Estimator(
-    const wpi::fields::Field & field, wpi::units::second_t window_size = wpi::units::second_t{5.0});
+    const wpi::fields::Field & field, wpi::units::second_t window_size = wpi::units::second_t{3.0});
 
   auto AddObservation(const TagObservation & obs) -> void;
   auto AddObservation(const CornersObservation & obs) -> void;

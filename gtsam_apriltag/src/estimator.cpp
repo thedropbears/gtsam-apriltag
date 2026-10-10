@@ -51,6 +51,10 @@ Estimator::Estimator(const wpi::fields::Field & field, wpi::units::second_t wind
 {
   ISAM2Params params;
   params.findUnusedFactorSlots = true;
+  // QR factorisation and Dogleg optimisation are the most stable
+  // Avoid indeterminate/unconstrained errors from numerical issues
+  params.factorization = ISAM2Params::QR;
+  params.optimizationParams = ISAM2DoglegParams();
 
   smoother_ = IncrementalFixedLagSmoother(window_size.value(), params);  // times are in s
 
